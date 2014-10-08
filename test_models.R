@@ -4,6 +4,8 @@ library(rpart)
 library(performanceEstimation)
 library(DMwR)
 library(psych)
+require(medley)
+library(earth)
 
 train <- read.csv("training.csv")
 #test <- read.csv("sorted_test.csv")
@@ -30,6 +32,13 @@ X_train <- cbind(X_train, MIR_DER[, -1])
 MIR_measurements <- train[, 2671:3579]
 MIR_DER <- MIR_measurements- cbind(NA, MIR_measurements)[, -(dim(MIR_measurements)[2]+1)]
 X_train1 <- cbind(train[, 3580:3595], MIR_DER[, -1])
+
+
+# training data
+MIR_measurements <- X_train1[, 17:924]
+MIR_DER <- MIR_measurements- cbind(NA, MIR_measurements)[, -(dim(MIR_measurements)[2]+1)]
+X_train2 <- cbind(train[, 3580:3595], MIR_DER[, -1])
+
 
 # testing data
 MIR_measurements <- test[, 2:2655]
@@ -62,6 +71,55 @@ names(train.norm[,3550:3580])
 names(train)[3600]
 
 soil_property = "Sand"
+
+
+# screening ---------------------------------------------------------------
+trPerc = .7
+soil_property = "Ca"
+model <- earth(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)])
+pred <- predict(model, ts.der1[,-ncol(ts.der1)])
+re <- regr.eval(ts.der1[,n2], pred)
+re
+
+
+# medley ------------------------------------------------------------------
+
+
+trPerc = .7
+
+runlist = as.data.frame(rep(NA, 5))
+for (i in 1:5)
+{
+  error <- NULL
+  for(soil_property in soil_properties){
+    idx <- sample(1:nrow(train),as.integer(trPerc*nrow(train)))
+    sp.col <- which(names(train)==soil_property)
+    
+    
+    train.der1 <- cbind(X_train1,train[ ,sp.col])
+    n2 <- length(train.der1)
+    colnames(train.der1)[n2] <- soil_property
+    tr.der1 <- train.der1[idx,]
+    ts.der1 <- train.der1[-idx,]
+    
+    med <- create.medley(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], errfunc=rmse)
+    med <- add.medley(med, svm, list(cost = 10, gamma=0.001))
+    med <- add.medley(med, svm, list(cost = 100, gamma=0.001))
+    med <- add.medley(med, svm, list(cost = 100, gamma=0.0001))
+    med <- add.medley(med, svm, list(cost = 1000, gamma=0.0001))
+    med <- add.medley(med, randomForest, list(ntree = 500, mtry=c(10,50))
+
+    pred <- predict(med, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,ncol(ts.der1)], pred)
+    print(re)
+    error <- rbind(error,re[2])
+
+  }
+    
+  runlist <- cbind(runlist,error)
+}
+
+# svm test on datasets ----------------------------------------------------
 
 trPerc = .7
 runlist = as.data.frame(rep(NA, 40))
@@ -196,9 +254,9 @@ for (i in 1:10)
 
 
 trPerc = .7
-runlist = as.data.frame(rep(NA, 25))
 
-for (i in 1:10)
+runlist = as.data.frame(rep(NA, 10))
+for (i in 1:5)
 {
   error <- NULL
   for(soil_property in soil_properties){
@@ -207,55 +265,29 @@ for (i in 1:10)
     idx <- sample(1:nrow(train),as.integer(trPerc*nrow(train)))
     sp.col <- which(names(train)==soil_property)
     
-    train.norm <- cbind(train[, 3580:3595],train[, 2:2655],train[, 2671:3579],train[ ,sp.col])
-    n1 <- length(train.norm)
-    colnames(train.norm)[n1] <- soil_property
-    tr.norm <- train.norm[idx,]
-    ts.norm <- train.norm[-idx,]
-    
+  
     train.der1 <- cbind(X_train1,train[ ,sp.col])
-    n21 <- length(train.der1)
-    colnames(train.der1)[n21] <- soil_property
+    n2 <- length(train.der1)
+    colnames(train.der1)[n2] <- soil_property
     tr.der1 <- train.der1[idx,]
     ts.der1 <- train.der1[-idx,]
     
-    
-    model.svm <- svm(tr.norm[,-ncol(tr.norm)], tr.norm[,ncol(tr.norm)], cost=100, gamma=0.0001)
-    pred.svm <- predict(model.svm, ts.norm[,-ncol(ts.norm)])
-    re <- regr.eval(ts.norm[,n1], pred.svm)
-    print("norm")
-    print(re)
-    error <- rbind(error,re[2])
-    
-    
-    model.svm <- svm(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], cost=10, gamma=0.001)
-    pred.svm <- predict(model.svm, ts.der1[,-ncol(ts.der1)])
-    re <- regr.eval(ts.der1[,n21], pred.svm)
+ 
+
+    soil_property = "Ca"    
+    model <- earth(Ca~.,tr.der1)
+    pred <- predict(model, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,n2], pred)
     print("der1")
     print(re)
     error <- rbind(error,re[2])
     
-    model.svm <- svm(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], cost=100, gamma=0.001)
-    pred.svm <- predict(model.svm, ts.der1[,-ncol(ts.der1)])
-    re <- regr.eval(ts.der1[,n21], pred.svm)
+    model.svm <- svm(tr.der2[,-ncol(tr.der2)], tr.der1[,ncol(tr.der2)], cost=100, gamma=0.0001)
+    pred.svm <- predict(model.svm, ts.der2[,-ncol(ts.der2)])
+    re <- regr.eval(ts.der2[,n3], pred.svm)
     print("der1")
     print(re)
     error <- rbind(error,re[2])
-    
-    model.svm <- svm(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], cost=100, gamma=0.0001)
-    pred.svm <- predict(model.svm, ts.der1[,-ncol(ts.der1)])
-    re <- regr.eval(ts.der1[,n21], pred.svm)
-    print("der1")
-    print(re)
-    error <- rbind(error,re[2])
-    
-    model.svm <- svm(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], cost=1000, gamma=0.0001)
-    pred.svm <- predict(model.svm, ts.der1[,-ncol(ts.der1)])
-    re <- regr.eval(ts.der1[,n21], pred.svm)
-    print("der1")
-    print(re)
-    error <- rbind(error,re[2])
-    
     
   }
   
@@ -267,6 +299,11 @@ write.csv(runlist, file="errorlist2.csv")
 
 run1 <- error
 run2 <- error
+
+
+
+# randomforest ------------------------------------------------------------
+
 
 runlist = as.data.frame(rep(NA, 40))
 
@@ -398,4 +435,55 @@ for (i in 1:10)
   
 }
 
+runlist = as.data.frame(rep(NA, 20))
 
+for (i in 1:5)
+{
+  error <- NULL
+  for(soil_property in soil_properties){
+    
+    print(soil_property)
+    idx <- sample(1:nrow(train),as.integer(trPerc*nrow(train)))
+    sp.col <- which(names(train)==soil_property)
+    
+    train.der1 <- cbind(X_train1,train[ ,sp.col])
+    n21 <- length(train.der1)
+    colnames(train.der1)[n21] <- soil_property
+    tr.der1 <- train.der1[idx,]
+    ts.der1 <- train.der1[-idx,]
+    
+    model.rf <- randomForest(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], ntree=500, mtry=10)
+    pred.rf <- predict(model.rf, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,n21], pred.rf)
+    print("der1")
+    print(re)
+    error <- rbind(error,re[2])
+    
+    model.rf <- randomForest(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], ntree=500, mtry=25)
+    pred.rf <- predict(model.rf, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,n21], pred.rf)
+    print("der1")
+    print(re)
+    error <- rbind(error,re[2])
+    
+    model.rf <- randomForest(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)],ntree=200, mtry=100)
+    pred.rf <- predict(model.rf, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,n21], pred.rf)
+    print("der1")
+    print(re)
+    error <- rbind(error,re[2])
+    
+    model.rf <- randomForest(tr.der1[,-ncol(tr.der1)], tr.der1[,ncol(tr.der1)], ntree=500, mtry=50)
+    pred.rf <- predict(model.rf, ts.der1[,-ncol(ts.der1)])
+    re <- regr.eval(ts.der1[,n21], pred.rf)
+    print("der1")
+    print(re)
+    error <- rbind(error,re[2])
+    
+  }
+  
+  runlist <- cbind(runlist,error)
+  
+}
+
+write.csv(runlist, file="errorlist4.csv")
